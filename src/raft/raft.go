@@ -1,6 +1,5 @@
 package raft
 
-//
 // this is an outline of the API that raft must expose to
 // the service (or tester). see comments below for
 // each of these functions for more details.
@@ -15,7 +14,6 @@ package raft
 //   each time a new entry is committed to the log, each Raft peer
 //   should send an ApplyMsg to the service (or tester)
 //   in the same server.
-//
 
 import "sync"
 import "labrpc"
@@ -28,7 +26,7 @@ import "math/rand"
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
 // tester) on the same server, via the applyCh passed to Make().
-//
+
 type ApplyMsg struct {
 	Index       int
 	Command     interface{}
@@ -153,7 +151,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term = rf.currentTerm // Follower and Candidate are in the same term
 
 	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && args.LastLogTerm <= rf.currentTerm {
-		// If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
+		// If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log
 		rf.votedFor = args.CandidateId
 		reply.VoteGranted = true
 	}
@@ -289,6 +287,17 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 //
 func (rf *Raft) Kill() {
 	// Your code here, if desired.
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	
+	// Close the heartbeat channel to signal the election loop to stop
+	close(rf.heartbeat)
+	
+	// Reset state
+	rf.peerState = Follower
+	rf.currentTerm = 0
+	rf.votedFor = -1
+	rf.numberOfVotes = 0
 }
 
 //
