@@ -301,10 +301,77 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 
 	// Your initialization code here (2A, 2B, 2C).
+	rf.peerState = Follower
+	rf.heartbeat = make(chan bool)
+	go main_loop_election(rf)
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
 
 	return rf
+}
+
+func main_loop_election(rf *Raft) {
+	for { // Infinite loop
+		switch rf.peerState {
+		case Follower:
+			select { // "Switch case for channels". Allows any "ready" alternative to proceed among
+			case <-rf.heartbeat: 
+			case <-time.After(time.Duration(250+rand.Intn(250)) * time.Millisecond): // Election timeout
+				rf.peerState = Candidate
+			}
+
+		case Candidate:
+			rf.broadcastRequestVote()
+
+			select {
+			case <-rf.heartbeat:
+				rf.peerState = Follower
+			case <-time.After(time.Duration(250+rand.Intn(250)) * time.Millisecond): // Election timeout
+			}
+
+		case Leader:
+			rf.broadcastAppendEntries()
+
+			time.Sleep(150 * time.Millisecond)
+		}
+	}
+}
+
+func (rf *Raft) broadcastRequestVote() {
+	rf.currentTerm += 1
+	rf.votedFor = rf.me
+	rf.numberOfVotes = 1
+
+	args := &RequestVoteArgs{
+		Term:        rf.currentTerm,
+		CandidateId: rf.me,
+	}
+
+	reply := &RequestVoteReply{
+		Term:        rf.currentTerm,
+		VoteGranted: false,
+	}
+
+	for server := 0; server < len(rf.peers); server++ {
+		if server != rf.me {
+			go rf.sendRequestVote(server, args, reply)
+		}
+	}
+}
+
+func (rf *Raft) broadcastAppendEntries() {
+	for server := 0; server < len(rf.peers); server++ {
+		if server != rf.me {
+			args := &AppendEntries{
+				Term: rf.currentTerm,
+			}
+			reply := &AppendEntriesReply{
+				Term:    rf.currentTerm,
+				Success: false,
+			}
+			go rf.sendAppendEntries(server, args, reply)
+		}
+	}
 }
