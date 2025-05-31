@@ -19,6 +19,8 @@ package raft
 
 import "sync"
 import "labrpc"
+import "time"
+import "math/rand"
 
 // import "bytes"
 // import "encoding/gob"
@@ -34,9 +36,16 @@ type ApplyMsg struct {
 	Snapshot    []byte // ignore for lab2; only used in lab3
 }
 
-//
+type PeerState int
+
+const (
+	Follower  PeerState = 0
+	Candidate PeerState = 1
+	Leader    PeerState = 2
+)
+
 // A Go object implementing a single Raft peer.
-//
+
 type Raft struct {
 	mu        sync.Mutex          // Lock to protect shared access to this peer's state
 	peers     []*labrpc.ClientEnd // RPC end points of all peers
