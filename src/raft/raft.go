@@ -181,9 +181,23 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 //
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
-	return ok
 
-	// TODO: Implement sendRequestVote
+	if ok == true {
+		if rf.currentTerm < reply.Term { // Candidate term updates and Candidate becomes follower
+			rf.currentTerm = reply.Term
+			rf.peerState = Follower
+			rf.votedFor = -1
+		}
+
+		if reply.VoteGranted == true { // If Candidate received a vote from a Follower
+			rf.numberOfVotes += 1
+			if rf.peerState == Candidate && rf.numberOfVotes > len(rf.peers)/2 { // If is Candidate and received majority of Follower votes, become Leader
+				rf.peerState = Leader
+			}
+		}
+	}
+
+	return ok
 }
 
 
