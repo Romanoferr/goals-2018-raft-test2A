@@ -1,5 +1,3 @@
-//diff to commit
-
 package raft
 
 //
@@ -25,9 +23,6 @@ import "labrpc"
 // import "bytes"
 // import "encoding/gob"
 
-
-
-//
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
 // tester) on the same server, via the applyCh passed to Make().
@@ -52,6 +47,11 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 
+	currentTerm   int       // latest term server has seen (initialized to 0 on first boot, increases monotonically)
+	peerState     PeerState // Follower, Candidate or Leader state
+	votedFor      int       // candidateId that received vote in current term (or null if none)
+	numberOfVotes int
+	heartbeat     chan bool
 }
 
 // return currentTerm and whether this server
@@ -61,14 +61,19 @@ func (rf *Raft) GetState() (int, bool) {
 	var term int
 	var isleader bool
 	// Your code here (2A).
+	term = rf.currentTerm
+	if rf.peerState == Leader {
+		isleader = true
+	} else {
+		isleader = false
+	}
+
 	return term, isleader
 }
 
-//
 // save Raft's persistent state to stable storage,
 // where it can later be retrieved after a crash and restart.
 // see paper's Figure 2 for a description of what should be persistent.
-//
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
@@ -96,29 +101,53 @@ func (rf *Raft) readPersist(data []byte) {
 }
 
 
-
-
-//
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
-//
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
+	Term         int // candidate's term
+	CandidateId  int // candidate requesting vote
+	LastLogIndex int
+	LastLogTerm  int
 }
 
-//
 // example RequestVote RPC reply structure.
 // field names must start with capital letters!
-//
 type RequestVoteReply struct {
 	// Your data here (2A).
+	Term        int  // currentTerm
+	VoteGranted bool // true means candidate received vote
 }
 
-//
+
 // example RequestVote RPC handler.
-//
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+
+	if args.Term < rf.currentTerm { 
+		// If Candidate term is less than Follower term, update Candidate term but don't receive vote
+		// Reply false if term < currentTerm
+		reply.Term = rf.currentTerm
+		reply.VoteGranted = false
+		rf.votedFor = -1
+		return
+	}
+
+	if args.Term > rf.currentTerm { 
+		// If Candidate term is greater than Follower/Candidate term, updates Follower/Candidate term and Follower/Candidate becomes Follower
+		rf.currentTerm = args.Term
+		rf.peerState = Follower
+		reply.VoteGranted = false
+		rf.votedFor = -1
+	}
+
+	reply.Term = rf.currentTerm // Follower and Candidate are in the same term
+
+	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && args.LastLogTerm <= rf.currentTerm {
+		// If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
+		rf.votedFor = args.CandidateId
+		reply.VoteGranted = true
+	}
 }
 
 //
@@ -153,6 +182,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
+
+	// TODO: Implement sendRequestVote
 }
 
 
