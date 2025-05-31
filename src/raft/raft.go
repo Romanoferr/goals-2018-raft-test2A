@@ -200,6 +200,53 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	return ok
 }
 
+type AppendEntries struct {
+	Term         int   // leader’s term
+	LeaderId     int
+	PrevLogIndex int
+	PrevLogTerm  int
+	Entries      []int // log entries to store (empty for heartbeat; may send more than one for efficiency)
+	LeaderCommit int   // leader’s commitIndex
+}
+
+type AppendEntriesReply struct {
+	Term    int  // currentTerm, for leader to update itself
+	Success bool
+}
+
+func (rf *Raft) AppendEntries(args *AppendEntries, reply *AppendEntriesReply) {
+
+	rf.heartbeat <- true // Update heartbeat
+
+	if args.Term < rf.currentTerm { // If Leader term is less than Follower term, reply term updates Leader with Follower term and reply Success false. Leader will become a updated Follower
+		reply.Term = rf.currentTerm
+		reply.Success = false
+		return
+	}
+
+	if args.Term > rf.currentTerm { // If Leader term is greater than Follower term, Follower term is updated with Leader term
+		rf.currentTerm = args.Term
+		rf.peerState = Follower
+		rf.votedFor = -1
+	}
+
+	reply.Term = args.Term
+	reply.Success = true
+}
+
+func (rf *Raft) sendAppendEntries(server int, args *AppendEntries, reply *AppendEntriesReply) bool {
+	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+
+	if ok == true {
+		if reply.Success == false {
+			rf.currentTerm = reply.Term
+			rf.peerState = Follower
+			rf.votedFor = -1
+		}
+	}
+
+	return ok
+}
 
 //
 // the service using Raft (e.g. a k/v server) wants to start
